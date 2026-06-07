@@ -263,7 +263,7 @@ class Keyboards:
             [InlineKeyboardButton("💳 Invest", callback_data="invest"), InlineKeyboardButton("📊 Portfolio", callback_data="portfolio")],
             [InlineKeyboardButton("💵 Withdraw", callback_data="withdraw"), InlineKeyboardButton("👥 Referral", callback_data="referral")],
             [InlineKeyboardButton("🤝 Support", callback_data="support"), InlineKeyboardButton("❓ Help", callback_data="help_menu")],
-            [InlineKeyboardButton("📈 Statistics", callback_data="stats")]
+            [InlineKeyboardButton("♻️ Statistics", callback_data="stats")]
         ])
 
     @staticmethod
@@ -741,7 +741,7 @@ class InvestmentBot:
         await query.edit_message_text(text, reply_markup=Keyboards.back_menu(), parse_mode="HTML")
 
     # ===================================================================
-    # ADMIN SYSTEM CONSOLE UI LAYERS
+    # ADMIN SYSTEM CONSOLE UI LAYLayers
     # ===================================================================
     async def admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_user.id not in Config.ADMIN_IDS: return
@@ -799,13 +799,15 @@ def run_automated_interest_cycles(bot_instance: InvestmentBot, application_insta
     active_contracts = db.fetchall("SELECT * FROM investments WHERE status = 'active'")
     if not active_contracts: return
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
     for contract in active_contracts:
         c_id, user_id, plan_type, amount, daily_rate, duration, start_date, end_date, total_return, daily_earning, _, total_earned, last_calc = contract
         
-        # Demo simulation logic: Disburses profit instantly on every scheduler sweep loop trigger (faster feedback for client)
         daily_earning = Decimal(daily_earning)
         new_earned = (Decimal(total_earned) + daily_earning).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
@@ -825,9 +827,13 @@ def run_automated_interest_cycles(bot_instance: InvestmentBot, application_insta
                 f"💳 Available Balance: <code>{Config.CURRENCY}{final_bal:,.2f}</code>\n\n"
                 f"<i>⚙️ Live Smart Node automation cycling continuously.</i>"
             )
-            try: loop.run_until_complete(application_instance.bot.send_message(chat_id=user_id, text=notification_text, parse_mode="HTML"))
-            except Exception: pass
-    loop.close()
+            try:
+                if loop.is_running():
+                    asyncio.run_coroutine_threadsafe(application_instance.bot.send_message(chat_id=user_id, text=notification_text, parse_mode="HTML"), loop)
+                else:
+                    loop.run_until_complete(application_instance.bot.send_message(chat_id=user_id, text=notification_text, parse_mode="HTML"))
+            except Exception:
+                pass
 
 # ===================================================================
 # INITIALIZATION FRAMEWORK ASSEMBLY RUNNER
@@ -836,21 +842,6 @@ def run_automated_interest_cycles(bot_instance: InvestmentBot, application_insta
 def main():
     bot = InvestmentBot()
     application = Application.builder().token(Config.BOT_TOKEN).build()
-
-    # Scheduler Engine Configuration (Triggers simulated earnings checks every 1 minute for demo rapid review)
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(run_automated_interest_cycles, 'interval', minutes=1, args=[bot, application])
-    scheduler.start()
-
-    # Command Mapping Handlers
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CommandHandler("help", bot.help_menu))
-    application.add_handler(CommandHandler("invest", bot.invest_callback))
-    application.add_handler(CommandHandler("portfolio", bot.portfolio))
-    application.add_handler(CommandHandler("withdraw", bot.withdraw_start))
-    application.add_handler(CommandHandler("referral", bot.referral))
-    application.add_handler(CommandHandler("admin", bot.admin_panel))
-    application.add_handler(CommandHandler("broadcast", bot.broadcast_message))
 
     # Callback Query Navigation Routing
     application.add_handler(CallbackQueryHandler(bot.portfolio, pattern="^portfolio$"))
@@ -889,6 +880,25 @@ def main():
 
     application.add_handler(invest_conv)
     application.add_handler(withdraw_conv)
+
+    # Command Mapping Handlers
+    application.add_handler(CommandHandler("start", bot.start))
+    application.add_handler(CommandHandler("help", bot.help_menu))
+    application.add_handler(CommandHandler("invest", bot.invest_callback))
+    application.add_handler(CommandHandler("portfolio", bot.portfolio))
+    application.add_handler(CommandHandler("withdraw", bot.withdraw_start))
+    application.add_handler(CommandHandler("referral", bot.referral))
+    application.add_handler(CommandHandler("admin", bot.admin_panel))
+    application.add_handler(CommandHandler("broadcast", bot.broadcast_message))
+
+    # Scheduler Engine Configuration with Cloud-Safe Threading & Daemon Support
+    try:
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(run_automated_interest_cycles, 'interval', minutes=1, args=[bot, application])
+        scheduler.start()
+        print("-> Background Yield Scheduler Deployed Successfully.")
+    except Exception as e:
+        print(f"-> Scheduler failed to start safely: {e}")
 
     print("=" * 60)
     print("INVESTMENT PRO BOT - HIGH CONTEXT PRESENTATION CLIENT DEMO MODE")
