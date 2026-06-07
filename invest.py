@@ -576,8 +576,11 @@ def main():
     application.add_handler(withdraw_conv)
     application.add_handler(CommandHandler("start", bot.start))
 
-    # JobQueue Optimization - Low Interval
-    application.job_queue.run_repeating(run_automated_interest_cycles_job, interval=60, first=10, data={"bot": bot})
+    # Safe verification loop for JobQueue
+    if application.job_queue:
+        application.job_queue.run_repeating(run_automated_interest_cycles_job, interval=60, data={"bot": bot})
+    else:
+        logger.warning("JobQueue is not initialized. Automated interest cycles will not run.")
 
     # Final sweep before polling starts
     gc.collect()
