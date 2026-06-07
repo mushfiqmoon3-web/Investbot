@@ -22,7 +22,6 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ConversationHandler, ContextTypes, filters
 )
-from apscheduler.schedulers.background import BackgroundScheduler
 
 load_dotenv()
 
@@ -322,7 +321,7 @@ class InvestmentBot:
         self.investment_manager = InvestmentManager(self.db)
 
     async def send_main_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False):
-        user = self.user_manager.get_user(update.effective_user.id)
+        user = self.user_manager.get_or_create_user(update.effective_user.id, update.effective_user.username, update.effective_user.first_name)
         text = (
             f"<b>🌟 INVESTMENT PRO DASHBOARD</b>\n"
             f"<i>⚙️ Status: <code>[Enterprise PostgreSQL Node Connected]</code></i>\n"
@@ -485,7 +484,6 @@ class InvestmentBot:
         plan_type = context.user_data.get("selected_plan")
         transaction_id = context.user_data.get("transaction_id")
 
-        # Dynamic Blockchain Verification Checking Animation Effect for client impression
         await query.edit_message_text("🔄 <code>[1/3] Connecting to Crypto API Gateway Webhook...</code>", parse_mode="HTML")
         await asyncio.sleep(1)
         await query.edit_message_text("🔄 <code>[2/3] Querying Transaction Hash from Mempool...</code>", parse_mode="HTML")
@@ -493,7 +491,6 @@ class InvestmentBot:
         await query.edit_message_text("🔄 <code>[3/3] Authenticating IPN Digital HMAC Signatures...</code>", parse_mode="HTML")
         await asyncio.sleep(0.8)
 
-        # SIMULATOR TRIGGER: Instant automated approval block
         if transaction_id == "TEST100":
             result = self.investment_manager.create_investment(update.effective_user.id, plan_type, amount)
             self.db.execute("""
@@ -513,7 +510,6 @@ class InvestmentBot:
             context.user_data.clear()
             return ConversationHandler.END
 
-        # Standard Manual Flow Backup Simulation
         try:
             cursor = self.db.execute("""
                 INSERT INTO deposit_requests (user_id, plan_type, amount, transaction_id, status, created_at)
@@ -678,7 +674,6 @@ class InvestmentBot:
         
         self.db.execute("UPDATE users SET balance = ?, total_withdrawn = ? WHERE user_id = ?", (str(new_balance), str(new_withdrawn), update.effective_user.id))
         
-        # Simulated instant payout effect to impress client
         msg = await update.message.reply_text("🔄 <code>Clearinghouse Routing System executing API call...</code>", parse_mode="HTML")
         await asyncio.sleep(1.5)
         await msg.edit_text(
@@ -741,7 +736,7 @@ class InvestmentBot:
         await query.edit_message_text(text, reply_markup=Keyboards.back_menu(), parse_mode="HTML")
 
     # ===================================================================
-    # ADMIN SYSTEM CONSOLE UI LAYLayers
+    # ADMIN SYSTEM CONSOLE UI LAYERS
     # ===================================================================
     async def admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_user.id not in Config.ADMIN_IDS: return
@@ -789,21 +784,15 @@ class InvestmentBot:
         await update.message.reply_text("📡 Broadcast operations completed.")
 
 # ===================================================================
-# AUTOMATED INTERESTS SIMULATION (CRON RUNTIME)
+# AUTOMATED INTERESTS SIMULATION (NATIVE ASYNC JOB QUEUE)
 # ===================================================================
 
-def run_automated_interest_cycles(bot_instance: InvestmentBot, application_instance: Application):
-    """Background engine simulation to add daily profits in demo mode securely"""
-    import asyncio
+async def run_automated_interest_cycles_job(context: ContextTypes.DEFAULT_TYPE):
+    """Safe Native Job Queue callback runner running directly inside PTB Event Loop"""
+    bot_instance = context.job.data["bot"]
     db = bot_instance.db
     active_contracts = db.fetchall("SELECT * FROM investments WHERE status = 'active'")
     if not active_contracts: return
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
 
     for contract in active_contracts:
         c_id, user_id, plan_type, amount, daily_rate, duration, start_date, end_date, total_return, daily_earning, _, total_earned, last_calc = contract
@@ -828,10 +817,7 @@ def run_automated_interest_cycles(bot_instance: InvestmentBot, application_insta
                 f"<i>⚙️ Live Smart Node automation cycling continuously.</i>"
             )
             try:
-                if loop.is_running():
-                    asyncio.run_coroutine_threadsafe(application_instance.bot.send_message(chat_id=user_id, text=notification_text, parse_mode="HTML"), loop)
-                else:
-                    loop.run_until_complete(application_instance.bot.send_message(chat_id=user_id, text=notification_text, parse_mode="HTML"))
+                await context.bot.send_message(chat_id=user_id, text=notification_text, parse_mode="HTML")
             except Exception:
                 pass
 
@@ -841,6 +827,7 @@ def run_automated_interest_cycles(bot_instance: InvestmentBot, application_insta
 
 def main():
     bot = InvestmentBot()
+    # Build Application with JobQueue enabled natively
     application = Application.builder().token(Config.BOT_TOKEN).build()
 
     # Callback Query Navigation Routing
@@ -891,14 +878,10 @@ def main():
     application.add_handler(CommandHandler("admin", bot.admin_panel))
     application.add_handler(CommandHandler("broadcast", bot.broadcast_message))
 
-    # Scheduler Engine Configuration with Cloud-Safe Threading & Daemon Support
-    try:
-        scheduler = BackgroundScheduler(daemon=True)
-        scheduler.add_job(run_automated_interest_cycles, 'interval', minutes=1, args=[bot, application])
-        scheduler.start()
-        print("-> Background Yield Scheduler Deployed Successfully.")
-    except Exception as e:
-        print(f"-> Scheduler failed to start safely: {e}")
+    # Deploy Native Cloud-Safe Job Queue Instead of APScheduler
+    job_queue = application.job_queue
+    job_queue.run_repeating(run_automated_interest_cycles_job, interval=60, first=10, data={"bot": bot})
+    print("-> Native Event-Loop JobQueue Deployed Successfully.")
 
     print("=" * 60)
     print("INVESTMENT PRO BOT - HIGH CONTEXT PRESENTATION CLIENT DEMO MODE")
